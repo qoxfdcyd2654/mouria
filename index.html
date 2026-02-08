@@ -86,7 +86,7 @@
         <div class="panel" id="auth-panel">
             <h2>👤 Вход в систему</h2>
             <input type="text" id="player-name" placeholder="Введите ваше имя игрока" value="Игрок1">
-            <button class="btn" onclick="login()">Начать игру</button>
+            <button class="btn" id="login-btn">Начать игру</button>
         </div>
         
         <!-- Панель выбора игры -->
@@ -95,25 +95,21 @@
             <div id="games-list">
                 <!-- Игры загружаются здесь -->
             </div>
-            <button class="btn" onclick="createGame()">➕ Создать новую игру</button>
+            <button class="btn" id="create-game-btn">➕ Создать новую игру</button>
         </div>
         
         <!-- Игровой мир -->
         <div class="panel" id="game-world-panel" style="display: none;">
             <h2>🌍 Игровой мир: <span id="current-game-title">Не выбрана</span></h2>
             
-            <button class="btn btn-success" onclick="joinCurrentGame()" id="join-btn">
-                🎮 Присоединиться к игре
-            </button>
-            <button class="btn" onclick="leaveGame()" id="leave-btn" style="display: none;">
-                👋 Покинуть игру
-            </button>
+            <button class="btn btn-success" id="join-btn">🎮 Присоединиться к игре</button>
+            <button class="btn" id="leave-btn" style="display: none;">👋 Покинуть игру</button>
             
             <div style="margin: 20px 0;">
-                <button class="btn" onclick="movePlayer('up')">↑ W (Вперед)</button><br>
-                <button class="btn" onclick="movePlayer('left')">← A (Влево)</button>
-                <button class="btn" onclick="movePlayer('right')">→ D (Вправо)</button><br>
-                <button class="btn" onclick="movePlayer('down')">↓ S (Назад)</button>
+                <button class="btn" id="move-up-btn">↑ W (Вперед)</button><br>
+                <button class="btn" id="move-left-btn">← A (Влево)</button>
+                <button class="btn" id="move-right-btn">→ D (Вправо)</button><br>
+                <button class="btn" id="move-down-btn">↓ S (Назад)</button>
             </div>
             
             <p>Ваша позиция: <span id="player-position">x:0, y:0, z:0</span></p>
@@ -129,8 +125,8 @@
         // ====================
         // НАСТРОЙКИ SUPABASE - ОБЯЗАТЕЛЬНО ЗАМЕНИ!
         // ====================
-        const SUPABASE_URL = 'https://your-project.supabase.co'; // ЗАМЕНИ на свой URL
-        const SUPABASE_ANON_KEY = 'your-anon-key'; // ЗАМЕНИ на свой ключ
+        const SUPABASE_URL = 'https://ваш-project.supabase.co'; // ЗАМЕНИ на свой URL
+        const SUPABASE_ANON_KEY = 'ваш-anon-key'; // ЗАМЕНИ на свой ключ
         
         // Инициализация Supabase
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -161,8 +157,10 @@
         // ====================
         // 1. АВТОРИЗАЦИЯ - РАБОЧАЯ ФУНКЦИЯ
         // ====================
-        async function login() {
+        window.login = async function() {
+            console.log('Функция login вызвана');
             const playerName = document.getElementById('player-name').value.trim();
+            
             if (!playerName) {
                 showNotification('Введите имя игрока!', true);
                 return;
@@ -237,11 +235,21 @@
                         <h3>${game.title}</h3>
                         <p>${game.description || 'Без описания'}</p>
                         <p>Игроков: ${game.players_online} | Посещений: ${game.total_visits}</p>
-                        <button class="btn" onclick="selectGame('${game.id}', '${game.title.replace(/'/g, "\\'")}')">
+                        <button class="btn select-game-btn" data-game-id="${game.id}" data-game-title="${game.title.replace(/'/g, "\\'")}">
                             Выбрать игру
                         </button>
                     `;
                     gamesList.appendChild(gameCard);
+                });
+                
+                // Добавляем обработчики для кнопок выбора игры
+                document.querySelectorAll('.select-game-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        selectGame(
+                            this.getAttribute('data-game-id'),
+                            this.getAttribute('data-game-title')
+                        );
+                    });
                 });
                 
             } catch (error) {
@@ -257,18 +265,24 @@
                     <h3>🏙️ Город приключений (ДЕМО)</h3>
                     <p>Исследуйте огромный город с друзьями</p>
                     <p>Игроков: 3 | Посещений: 1250</p>
-                    <button class="btn" onclick="selectGame('demo1', 'Город приключений')">
+                    <button class="btn" id="demo-game-btn">
                         Выбрать игру
                     </button>
                 </div>
             `;
+            
+            // Обработчик для демо-игры
+            document.getElementById('demo-game-btn').addEventListener('click', function() {
+                selectGame('demo1', 'Город приключений');
+            });
+            
             showNotification('Используется демо-режим. Проверьте подключение к Supabase.');
         }
         
         // ====================
         // 3. ВЫБОР ИГРЫ - РАБОЧАЯ ФУНКЦИЯ
         // ====================
-        function selectGame(gameId, gameTitle) {
+        window.selectGame = function(gameId, gameTitle) {
             console.log('Выбрана игра:', gameId, gameTitle);
             
             currentGame = { id: gameId, title: gameTitle };
@@ -284,7 +298,7 @@
         // ====================
         // 4. СОЗДАНИЕ ИГРЫ - РАБОЧАЯ ФУНКЦИЯ
         // ====================
-        async function createGame() {
+        window.createGame = async function() {
             if (!currentPlayer) {
                 showNotification('Сначала войдите в систему!', true);
                 return;
@@ -334,7 +348,7 @@
         // ====================
         // 5. ПРИСОЕДИНЕНИЕ К ИГРЕ - РАБОЧАЯ ФУНКЦИЯ
         // ====================
-        async function joinCurrentGame() {
+        window.joinCurrentGame = async function() {
             if (!currentPlayer) {
                 showNotification('Сначала войдите в систему!', true);
                 return;
@@ -430,7 +444,7 @@
         // ====================
         // 6. ДВИЖЕНИЕ ИГРОКА - РАБОЧАЯ ФУНКЦИЯ
         // ====================
-        async function movePlayer(direction) {
+        window.movePlayer = async function(direction) {
             if (!currentPlayer || !currentGame) {
                 showNotification('Сначала присоединитесь к игре!', true);
                 return;
@@ -515,7 +529,7 @@
         // ====================
         // 8. ВЫХОД ИЗ ИГРЫ - РАБОЧАЯ ФУНКЦИЯ
         // ====================
-        async function leaveGame() {
+        window.leaveGame = async function() {
             if (!currentPlayer || !currentGame) return;
             
             console.log('Выходим из игры:', currentGame.id);
@@ -599,18 +613,27 @@
         }
         
         // ====================
-        // ПРОВЕРКА ПРИ ЗАГРУЗКЕ
+        // ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ
         // ====================
-        window.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', function() {
             console.log('Mouria Platform загружен!');
-            console.log('ВАЖНО: Замени SUPABASE_URL и SUPABASE_ANON_KEY на свои!');
-            console.log('Текущие настройки:');
-            console.log('- URL:', SUPABASE_URL);
-            console.log('- Ключ:', SUPABASE_ANON_KEY ? 'установлен' : 'НЕ УСТАНОВЛЕН');
+            
+            // Назначаем обработчики событий
+            document.getElementById('login-btn').addEventListener('click', login);
+            document.getElementById('create-game-btn').addEventListener('click', createGame);
+            document.getElementById('join-btn').addEventListener('click', joinCurrentGame);
+            document.getElementById('leave-btn').addEventListener('click', leaveGame);
+            document.getElementById('move-up-btn').addEventListener('click', function() { movePlayer('up'); });
+            document.getElementById('move-down-btn').addEventListener('click', function() { movePlayer('down'); });
+            document.getElementById('move-left-btn').addEventListener('click', function() { movePlayer('left'); });
+            document.getElementById('move-right-btn').addEventListener('click', function() { movePlayer('right'); });
             
             // Проверяем настройки
-            if (SUPABASE_URL.includes('your-project') || SUPABASE_ANON_KEY.includes('your-anon-key')) {
+            if (SUPABASE_URL.includes('ваш-project') || SUPABASE_ANON_KEY.includes('ваш-anon-key')) {
                 showNotification('⚠️ Замените настройки Supabase в коде!', true);
+                console.log('ВНИМАНИЕ: Замените настройки Supabase!');
+                console.log('URL:', SUPABASE_URL);
+                console.log('Ключ:', SUPABASE_ANON_KEY);
             }
         });
     </script>
