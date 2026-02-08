@@ -106,10 +106,10 @@
             <button class="btn" id="leave-btn" style="display: none;">👋 Покинуть игру</button>
             
             <div style="margin: 20px 0;">
-                <button class="btn" id="move-up-btn">↑ W (Вперед)</button><br>
-                <button class="btn" id="move-left-btn">← A (Влево)</button>
-                <button class="btn" id="move-right-btn">→ D (Вправо)</button><br>
-                <button class="btn" id="move-down-btn">↓ S (Назад)</button>
+                <button class="btn move-btn" data-direction="up">↑ W (Вперед)</button><br>
+                <button class="btn move-btn" data-direction="left">← A (Влево)</button>
+                <button class="btn move-btn" data-direction="right">→ D (Вправо)</button><br>
+                <button class="btn move-btn" data-direction="down">↓ S (Назад)</button>
             </div>
             
             <p>Ваша позиция: <span id="player-position">x:0, y:0, z:0</span></p>
@@ -125,19 +125,25 @@
         // ====================
         // НАСТРОЙКИ SUPABASE - ОБЯЗАТЕЛЬНО ЗАМЕНИ!
         // ====================
+        // ЕСЛИ ВИДИШЬ ОШИБКУ "already declared", УДАЛИ СТАРЫЙ КОД И ВСТАВЬ ТОЛЬКО ЭТОТ!
         const SUPABASE_URL = 'https://ваш-project.supabase.co'; // ЗАМЕНИ на свой URL
         const SUPABASE_ANON_KEY = 'ваш-anon-key'; // ЗАМЕНИ на свой ключ
         
-        // Инициализация Supabase
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
-        // Проверка подключения
-        console.log('Supabase инициализирован:', supabase);
+        // Инициализация Supabase (только один раз!)
+        let supabase;
+        try {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            console.log('✅ Supabase инициализирован');
+        } catch (error) {
+            console.error('❌ Ошибка инициализации Supabase:', error);
+            alert('Ошибка подключения к базе данных. Проверьте настройки.');
+        }
         
         // Переменные приложения
         let currentPlayer = null;
         let currentGame = null;
         let playerPosition = { x: 0, y: 0, z: 0 };
+        let updateInterval = null;
         
         // ====================
         // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -155,10 +161,10 @@
         }
         
         // ====================
-        // 1. АВТОРИЗАЦИЯ - РАБОЧАЯ ФУНКЦИЯ
+        // 1. АВТОРИЗАЦИЯ
         // ====================
-        window.login = async function() {
-            console.log('Функция login вызвана');
+        async function login() {
+            console.log('👤 Функция login вызвана');
             const playerName = document.getElementById('player-name').value.trim();
             
             if (!playerName) {
@@ -173,18 +179,22 @@
                 };
                 
                 // Проверяем подключение к Supabase
+                if (!supabase) {
+                    showNotification('Supabase не инициализирован!', true);
+                    return;
+                }
+                
                 const { data, error } = await supabase
                     .from('games')
                     .select('count')
                     .limit(1);
                 
                 if (error) {
-                    showNotification('Ошибка подключения к базе. Проверьте URL и ключ.', true);
-                    console.error('Supabase ошибка:', error);
-                    return;
+                    console.warn('⚠️ Ошибка подключения, используем демо:', error);
+                    showNotification('Используется демо-режим');
                 }
                 
-                showNotification(`Добро пожаловать, ${playerName}!`);
+                showNotification(`🎉 Добро пожаловать, ${playerName}!`);
                 
                 // Показываем игры
                 document.getElementById('auth-panel').style.display = 'none';
@@ -194,37 +204,39 @@
                 await loadGames();
                 
             } catch (error) {
-                console.error('Ошибка входа:', error);
-                showNotification('Ошибка входа. Проверьте консоль.', true);
+                console.error('❌ Ошибка входа:', error);
+                showNotification('Ошибка входа. Используется демо-режим.');
+                
+                // Все равно показываем игры в демо-режиме
+                document.getElementById('auth-panel').style.display = 'none';
+                document.getElementById('games-panel').style.display = 'block';
+                showDemoGames();
             }
         }
         
         // ====================
-        // 2. ЗАГРУЗКА ИГР - РАБОЧАЯ ФУНКЦИЯ
+        // 2. ЗАГРУЗКА ИГР
         // ====================
         async function loadGames() {
-            console.log('Загружаем игры...');
+            console.log('🎮 Загружаем игры...');
             
             try {
-                // Загружаем игры из базы
+                if (!supabase) throw new Error('Supabase не доступен');
+                
                 const { data: games, error } = await supabase
                     .from('games')
                     .select('*')
                     .order('created_at', { ascending: false });
                 
-                if (error) {
-                    console.error('Ошибка загрузки игр:', error);
-                    showDemoGames();
-                    return;
-                }
+                if (error) throw error;
                 
-                console.log('Игры загружены:', games);
+                console.log('✅ Игры загружены:', games);
                 
                 const gamesList = document.getElementById('games-list');
                 gamesList.innerHTML = '';
                 
                 if (!games || games.length === 0) {
-                    gamesList.innerHTML = '<p>Игр пока нет. Создайте первую!</p>';
+                    gamesList.innerHTML = '<p>🎯 Игр пока нет. Создайте первую!</p>';
                     return;
                 }
                 
@@ -233,57 +245,61 @@
                     gameCard.className = 'game-card';
                     gameCard.innerHTML = `
                         <h3>${game.title}</h3>
-                        <p>${game.description || 'Без описания'}</p>
-                        <p>Игроков: ${game.players_online} | Посещений: ${game.total_visits}</p>
-                        <button class="btn select-game-btn" data-game-id="${game.id}" data-game-title="${game.title.replace(/'/g, "\\'")}">
+                        <p>${game.description || '🎮 Без описания'}</p>
+                        <p>👥 Игроков: ${game.players_online} | 👁️ Посещений: ${game.total_visits}</p>
+                        <button class="btn select-game-btn" data-game-id="${game.id}" data-game-title="${game.title.replace(/"/g, '&quot;')}">
                             Выбрать игру
                         </button>
                     `;
                     gamesList.appendChild(gameCard);
                 });
                 
-                // Добавляем обработчики для кнопок выбора игры
-                document.querySelectorAll('.select-game-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        selectGame(
-                            this.getAttribute('data-game-id'),
-                            this.getAttribute('data-game-title')
-                        );
+                // Обработчики для кнопок выбора игры
+                setTimeout(() => {
+                    document.querySelectorAll('.select-game-btn').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            selectGame(
+                                this.getAttribute('data-game-id'),
+                                this.getAttribute('data-game-title')
+                            );
+                        });
                     });
-                });
+                }, 100);
                 
             } catch (error) {
-                console.error('Ошибка:', error);
+                console.error('❌ Ошибка загрузки игр:', error);
                 showDemoGames();
             }
         }
         
         function showDemoGames() {
+            console.log('🔄 Показываем демо-игры');
             const gamesList = document.getElementById('games-list');
             gamesList.innerHTML = `
                 <div class="game-card">
                     <h3>🏙️ Город приключений (ДЕМО)</h3>
                     <p>Исследуйте огромный город с друзьями</p>
-                    <p>Игроков: 3 | Посещений: 1250</p>
+                    <p>👥 Игроков: 3 | 👁️ Посещений: 1250</p>
                     <button class="btn" id="demo-game-btn">
                         Выбрать игру
                     </button>
                 </div>
             `;
             
-            // Обработчик для демо-игры
-            document.getElementById('demo-game-btn').addEventListener('click', function() {
-                selectGame('demo1', 'Город приключений');
-            });
+            setTimeout(() => {
+                document.getElementById('demo-game-btn').addEventListener('click', function() {
+                    selectGame('demo1', 'Город приключений');
+                });
+            }, 100);
             
-            showNotification('Используется демо-режим. Проверьте подключение к Supabase.');
+            showNotification('📱 Используется демо-режим');
         }
         
         // ====================
-        // 3. ВЫБОР ИГРЫ - РАБОЧАЯ ФУНКЦИЯ
+        // 3. ВЫБОР ИГРЫ
         // ====================
-        window.selectGame = function(gameId, gameTitle) {
-            console.log('Выбрана игра:', gameId, gameTitle);
+        function selectGame(gameId, gameTitle) {
+            console.log('🎯 Выбрана игра:', gameId, gameTitle);
             
             currentGame = { id: gameId, title: gameTitle };
             
@@ -292,13 +308,16 @@
             document.getElementById('game-world-panel').style.display = 'block';
             document.getElementById('current-game-title').textContent = gameTitle;
             
-            showNotification(`Выбрана игра: ${gameTitle}`);
+            showNotification(`✅ Выбрана игра: ${gameTitle}`);
+            
+            // Загружаем игроков
+            loadPlayers();
         }
         
         // ====================
-        // 4. СОЗДАНИЕ ИГРЫ - РАБОЧАЯ ФУНКЦИЯ
+        // 4. СОЗДАНИЕ ИГРЫ
         // ====================
-        window.createGame = async function() {
+        async function createGame() {
             if (!currentPlayer) {
                 showNotification('Сначала войдите в систему!', true);
                 return;
@@ -309,10 +328,11 @@
             
             const description = prompt('Описание игры (необязательно):') || '';
             
-            console.log('Создаем игру:', title);
+            console.log('➕ Создаем игру:', title);
             
             try {
-                // Создаем игру в базе
+                if (!supabase) throw new Error('Supabase не доступен');
+                
                 const { data, error } = await supabase
                     .from('games')
                     .insert([
@@ -327,28 +347,24 @@
                     ])
                     .select();
                 
-                if (error) {
-                    console.error('Ошибка создания игры:', error);
-                    showNotification('Ошибка создания игры. Проверьте таблицу games.', true);
-                    return;
-                }
+                if (error) throw error;
                 
-                console.log('Игра создана:', data);
-                showNotification(`Игра "${title}" создана!`);
+                console.log('✅ Игра создана:', data);
+                showNotification(`🎮 Игра "${title}" создана!`);
                 
                 // Перезагружаем список игр
                 await loadGames();
                 
             } catch (error) {
-                console.error('Ошибка:', error);
+                console.error('❌ Ошибка создания игры:', error);
                 showNotification('Ошибка создания игры', true);
             }
         }
         
         // ====================
-        // 5. ПРИСОЕДИНЕНИЕ К ИГРЕ - РАБОЧАЯ ФУНКЦИЯ
+        // 5. ПРИСОЕДИНЕНИЕ К ИГРЕ
         // ====================
-        window.joinCurrentGame = async function() {
+        async function joinCurrentGame() {
             if (!currentPlayer) {
                 showNotification('Сначала войдите в систему!', true);
                 return;
@@ -359,7 +375,7 @@
                 return;
             }
             
-            console.log('Присоединяемся к игре:', currentGame.id);
+            console.log('🎮 Присоединяемся к игре:', currentGame.id);
             
             // Начальная позиция
             playerPosition = {
@@ -369,82 +385,68 @@
             };
             
             try {
-                // Добавляем игрока в базу
-                const { error: playerError } = await supabase
-                    .from('players')
-                    .insert([
-                        {
-                            game_id: currentGame.id,
-                            player_name: currentPlayer.name,
-                            position_x: playerPosition.x,
-                            position_y: playerPosition.y,
-                            position_z: playerPosition.z,
-                            last_update: new Date().toISOString()
-                        }
-                    ]);
-                
-                if (playerError) {
-                    console.error('Ошибка добавления игрока:', playerError);
-                    // Пробуем обновить существующего
-                    const { error: updateError } = await supabase
+                if (supabase && currentGame.id !== 'demo1') {
+                    // Реальный режим с Supabase
+                    const { error: playerError } = await supabase
                         .from('players')
-                        .update({
-                            position_x: playerPosition.x,
-                            position_y: playerPosition.y,
-                            position_z: playerPosition.z,
-                            last_update: new Date().toISOString()
-                        })
-                        .eq('game_id', currentGame.id)
-                        .eq('player_name', currentPlayer.name);
+                        .insert([
+                            {
+                                game_id: currentGame.id,
+                                player_name: currentPlayer.name,
+                                position_x: playerPosition.x,
+                                position_y: playerPosition.y,
+                                position_z: playerPosition.z,
+                                last_update: new Date().toISOString()
+                            }
+                        ]);
                     
-                    if (updateError) {
-                        throw updateError;
-                    }
+                    if (playerError) throw playerError;
+                    
+                    // Записываем посещение
+                    await supabase
+                        .from('game_visits')
+                        .insert([
+                            {
+                                game_id: currentGame.id,
+                                player_name: currentPlayer.name,
+                                duration_seconds: 0
+                            }
+                        ]);
+                    
+                    console.log('✅ Игрок добавлен в базу');
                 }
-                
-                // Записываем посещение
-                const { error: visitError } = await supabase
-                    .from('game_visits')
-                    .insert([
-                        {
-                            game_id: currentGame.id,
-                            player_name: currentPlayer.name,
-                            duration_seconds: 0
-                        }
-                    ]);
-                
-                if (visitError) console.error('Ошибка записи посещения:', visitError);
-                
-                // Обновляем счетчик игроков
-                await updateGameStats(1, 1);
                 
                 // Обновляем интерфейс
                 document.getElementById('join-btn').style.display = 'none';
                 document.getElementById('leave-btn').style.display = 'block';
                 
-                showNotification(`Вы присоединились к игре "${currentGame.title}"!`);
+                showNotification(`🎉 Вы присоединились к игре "${currentGame.title}"!`);
+                
+                // Обновляем позицию
+                updatePositionDisplay();
                 
                 // Загружаем список игроков
                 await loadPlayers();
                 
-                // Запускаем обновление позиции
-                startPositionUpdates();
+                // Запускаем автообновление
+                startAutoUpdate();
                 
             } catch (error) {
-                console.error('Ошибка присоединения:', error);
-                showNotification('Ошибка присоединения. Используется демо-режим.');
+                console.error('❌ Ошибка присоединения:', error);
                 
                 // Демо-режим
                 document.getElementById('join-btn').style.display = 'none';
                 document.getElementById('leave-btn').style.display = 'block';
-                startPositionUpdates();
+                updatePositionDisplay();
+                startAutoUpdate();
+                showNotification('🎮 Присоединились (демо-режим)');
             }
         }
         
         // ====================
-        // 6. ДВИЖЕНИЕ ИГРОКА - РАБОЧАЯ ФУНКЦИЯ
+        // 6. ДВИЖЕНИЕ ИГРОКА
         // ====================
-        window.movePlayer = async function(direction) {
+        async function movePlayer(direction) {
             if (!currentPlayer || !currentGame) {
                 showNotification('Сначала присоединитесь к игре!', true);
                 return;
@@ -458,53 +460,67 @@
             }
             
             // Обновляем отображение
-            document.getElementById('player-position').textContent = 
-                `x:${playerPosition.x}, y:${playerPosition.y}, z:${playerPosition.z}`;
+            updatePositionDisplay();
             
             // Обновляем в базе
             try {
-                const { error } = await supabase
-                    .from('players')
-                    .update({
-                        position_x: playerPosition.x,
-                        position_y: playerPosition.y,
-                        position_z: playerPosition.z,
-                        last_update: new Date().toISOString()
-                    })
-                    .eq('game_id', currentGame.id)
-                    .eq('player_name', currentPlayer.name);
-                
-                if (error) console.error('Ошибка обновления позиции:', error);
+                if (supabase && currentGame.id !== 'demo1') {
+                    await supabase
+                        .from('players')
+                        .update({
+                            position_x: playerPosition.x,
+                            position_y: playerPosition.y,
+                            position_z: playerPosition.z,
+                            last_update: new Date().toISOString()
+                        })
+                        .eq('game_id', currentGame.id)
+                        .eq('player_name', currentPlayer.name);
+                }
                 
             } catch (error) {
-                console.error('Ошибка движения:', error);
+                console.error('❌ Ошибка движения:', error);
             }
         }
         
+        function updatePositionDisplay() {
+            document.getElementById('player-position').textContent = 
+                `x:${playerPosition.x}, y:${playerPosition.y}, z:${playerPosition.z}`;
+        }
+        
         // ====================
-        // 7. ЗАГРУЗКА ИГРОКОВ - РАБОЧАЯ ФУНКЦИЯ
+        // 7. ЗАГРУЗКА ИГРОКОВ
         // ====================
         async function loadPlayers() {
             if (!currentGame) return;
             
             try {
-                const { data: players, error } = await supabase
-                    .from('players')
-                    .select('*')
-                    .eq('game_id', currentGame.id);
+                let players = [];
                 
-                if (error) {
-                    console.error('Ошибка загрузки игроков:', error);
-                    return;
+                if (supabase && currentGame.id !== 'demo1') {
+                    // Реальный режим
+                    const { data, error } = await supabase
+                        .from('players')
+                        .select('*')
+                        .eq('game_id', currentGame.id);
+                    
+                    if (error) throw error;
+                    players = data || [];
+                } else {
+                    // Демо-режим
+                    players = [
+                        { player_name: 'Игрок1', position_x: 100, position_z: 100 },
+                        { player_name: 'Гость', position_x: 200, position_z: 200 },
+                        { player_name: currentPlayer.name, position_x: playerPosition.x, position_z: playerPosition.z }
+                    ];
                 }
                 
-                console.log('Игроки загружены:', players);
+                console.log('👥 Игроки загружены:', players);
                 
                 const playersList = document.getElementById('players-list');
                 playersList.innerHTML = '';
                 
-                if (!players || players.length === 0) {
-                    playersList.innerHTML = '<p>Нет игроков онлайн</p>';
+                if (players.length === 0) {
+                    playersList.innerHTML = '<p>😴 Нет игроков онлайн</p>';
                     document.getElementById('online-count').textContent = '0';
                     return;
                 }
@@ -512,9 +528,10 @@
                 players.forEach(player => {
                     const playerItem = document.createElement('div');
                     playerItem.className = 'player-item';
+                    const isCurrent = player.player_name === currentPlayer?.name;
                     playerItem.innerHTML = `
-                        <strong>${player.player_name}</strong>
-                        <span style="margin-left: auto;">x:${player.position_x}, z:${player.position_z}</span>
+                        <strong>${player.player_name} ${isCurrent ? '(Вы)' : ''}</strong>
+                        <span style="margin-left: auto;">📍 x:${player.position_x}, z:${player.position_z}</span>
                     `;
                     playersList.appendChild(playerItem);
                 });
@@ -522,119 +539,100 @@
                 document.getElementById('online-count').textContent = players.length;
                 
             } catch (error) {
-                console.error('Ошибка:', error);
+                console.error('❌ Ошибка загрузки игроков:', error);
             }
         }
         
         // ====================
-        // 8. ВЫХОД ИЗ ИГРЫ - РАБОЧАЯ ФУНКЦИЯ
+        // 8. ВЫХОД ИЗ ИГРЫ
         // ====================
-        window.leaveGame = async function() {
+        async function leaveGame() {
             if (!currentPlayer || !currentGame) return;
             
-            console.log('Выходим из игры:', currentGame.id);
+            console.log('👋 Выходим из игры:', currentGame.id);
             
             try {
-                // Удаляем игрока из базы
-                const { error } = await supabase
-                    .from('players')
-                    .delete()
-                    .eq('game_id', currentGame.id)
-                    .eq('player_name', currentPlayer.name);
+                if (supabase && currentGame.id !== 'demo1') {
+                    await supabase
+                        .from('players')
+                        .delete()
+                        .eq('game_id', currentGame.id)
+                        .eq('player_name', currentPlayer.name);
+                }
                 
-                if (error) console.error('Ошибка удаления игрока:', error);
-                
-                // Обновляем счетчик
-                await updateGameStats(-1, 0);
+                // Останавливаем автообновление
+                if (updateInterval) {
+                    clearInterval(updateInterval);
+                    updateInterval = null;
+                }
                 
                 // Обновляем интерфейс
                 document.getElementById('join-btn').style.display = 'block';
                 document.getElementById('leave-btn').style.display = 'none';
                 
-                showNotification(`Вы покинули игру "${currentGame.title}"`);
+                showNotification(`👋 Вы покинули игру "${currentGame.title}"`);
                 
                 // Очищаем список игроков
                 document.getElementById('players-list').innerHTML = '';
                 document.getElementById('online-count').textContent = '0';
                 
             } catch (error) {
-                console.error('Ошибка выхода:', error);
+                console.error('❌ Ошибка выхода:', error);
                 showNotification('Ошибка выхода из игры', true);
             }
         }
         
         // ====================
-        // 9. ОБНОВЛЕНИЕ СТАТИСТИКИ - РАБОЧАЯ ФУНКЦИЯ
+        // 9. АВТООБНОВЛЕНИЕ
         // ====================
-        async function updateGameStats(playersChange, visitsChange) {
-            if (!currentGame) return;
-            
-            try {
-                // Получаем текущую игру
-                const { data: game, error: fetchError } = await supabase
-                    .from('games')
-                    .select('players_online, total_visits')
-                    .eq('id', currentGame.id)
-                    .single();
-                
-                if (fetchError) {
-                    console.error('Ошибка получения игры:', fetchError);
-                    return;
-                }
-                
-                // Обновляем счетчики
-                const { error: updateError } = await supabase
-                    .from('games')
-                    .update({
-                        players_online: (game.players_online || 0) + playersChange,
-                        total_visits: (game.total_visits || 0) + visitsChange
-                    })
-                    .eq('id', currentGame.id);
-                
-                if (updateError) {
-                    console.error('Ошибка обновления статистики:', updateError);
-                }
-                
-            } catch (error) {
-                console.error('Ошибка:', error);
+        function startAutoUpdate() {
+            if (updateInterval) {
+                clearInterval(updateInterval);
             }
-        }
-        
-        // ====================
-        // 10. АВТООБНОВЛЕНИЕ ПОЗИЦИИ
-        // ====================
-        function startPositionUpdates() {
-            // Автообновление списка игроков каждые 5 секунд
-            setInterval(async () => {
+            
+            // Обновляем список игроков каждые 3 секунды
+            updateInterval = setInterval(async () => {
                 if (currentPlayer && currentGame) {
                     await loadPlayers();
                 }
-            }, 5000);
+            }, 3000);
+            
+            console.log('🔄 Автообновление запущено');
         }
         
         // ====================
         // ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ
         // ====================
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Mouria Platform загружен!');
+            console.log('🚀 Mouria Platform загружен!');
             
             // Назначаем обработчики событий
             document.getElementById('login-btn').addEventListener('click', login);
             document.getElementById('create-game-btn').addEventListener('click', createGame);
             document.getElementById('join-btn').addEventListener('click', joinCurrentGame);
             document.getElementById('leave-btn').addEventListener('click', leaveGame);
-            document.getElementById('move-up-btn').addEventListener('click', function() { movePlayer('up'); });
-            document.getElementById('move-down-btn').addEventListener('click', function() { movePlayer('down'); });
-            document.getElementById('move-left-btn').addEventListener('click', function() { movePlayer('left'); });
-            document.getElementById('move-right-btn').addEventListener('click', function() { movePlayer('right'); });
+            
+            // Обработчики для кнопок движения
+            document.querySelectorAll('.move-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    movePlayer(this.getAttribute('data-direction'));
+                });
+            });
             
             // Проверяем настройки
             if (SUPABASE_URL.includes('ваш-project') || SUPABASE_ANON_KEY.includes('ваш-anon-key')) {
                 showNotification('⚠️ Замените настройки Supabase в коде!', true);
-                console.log('ВНИМАНИЕ: Замените настройки Supabase!');
-                console.log('URL:', SUPABASE_URL);
-                console.log('Ключ:', SUPABASE_ANON_KEY);
+                console.log('⚠️ ВНИМАНИЕ: Замените настройки Supabase!');
+            } else {
+                console.log('✅ Настройки Supabase проверены');
             }
+            
+            // Авто-логин для теста (можно удалить)
+            setTimeout(() => {
+                if (document.getElementById('auth-panel').style.display !== 'none') {
+                    console.log('🔧 Авто-тест: можно нажать "Начать игру"');
+                }
+            }, 1000);
         });
     </script>
 </body>
