@@ -78,6 +78,11 @@
             z-index: 1000;
         }
         .notification.error { background: #f44336; }
+        .auto-login-btn {
+            background: #FF9800;
+            margin-top: 10px;
+        }
+        .auto-login-btn:hover { background: #F57C00; }
     </style>
 </head>
 <body>
@@ -87,6 +92,10 @@
             <h2>👤 Вход в систему</h2>
             <input type="text" id="player-name" placeholder="Введите ваше имя игрока" value="Игрок1">
             <button class="btn" id="login-btn">Начать игру</button>
+            <button class="btn auto-login-btn" id="auto-login-btn">🔧 Авто-регистрация (Тест)</button>
+            <p style="margin-top: 10px; font-size: 14px; opacity: 0.8;">
+                Для теста используйте "Авто-регистрация"
+            </p>
         </div>
         
         <!-- Панель выбора игры -->
@@ -96,6 +105,7 @@
                 <!-- Игры загружаются здесь -->
             </div>
             <button class="btn" id="create-game-btn">➕ Создать новую игру</button>
+            <button class="btn" id="refresh-games-btn">🔄 Обновить список</button>
         </div>
         
         <!-- Игровой мир -->
@@ -116,6 +126,11 @@
             
             <h3>Игроки онлайн (<span id="online-count">0</span>):</h3>
             <div id="players-list"></div>
+            
+            <div style="margin-top: 20px;">
+                <button class="btn" id="test-move-btn">🎯 Тест движения (случайно)</button>
+                <button class="btn" id="add-demo-player-btn">➕ Добавить демо-игрока</button>
+            </div>
         </div>
     </div>
     
@@ -123,20 +138,18 @@
 
     <script>
         // ====================
-        // НАСТРОЙКИ SUPABASE - ОБЯЗАТЕЛЬНО ЗАМЕНИ!
+        // НАСТРОЙКИ SUPABASE
         // ====================
-        // ЕСЛИ ВИДИШЬ ОШИБКУ "already declared", УДАЛИ СТАРЫЙ КОД И ВСТАВЬ ТОЛЬКО ЭТОТ!
-        const SUPABASE_URL = 'https://pyigubpkwpgzshfmwpce.supabase.co'; // ЗАМЕНИ на свой URL
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5aWd1YnBrd3BnenNoZm13cGNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMzc2NzAsImV4cCI6MjA4NTcxMzY3MH0.K-P03AbVPLY0C-yGcNULRmipAagB41alDzSMsoyf5pY'; // ЗАМЕНИ на свой ключ
+        const SUPABASE_URL = 'https://pyigubpkwpgzshfmwpce.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5aWd1YnBrd3BnenNoZm13cGNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMzc2NzAsImV4cCI6MjA4NTcxMzY3MH0.K-P03AbVPLY0C-yGcNULRmipAagB41alDzSMsoyf5pY';
         
-        // Инициализация Supabase (только один раз!)
+        // Инициализация Supabase
         let supabase;
         try {
             supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             console.log('✅ Supabase инициализирован');
         } catch (error) {
             console.error('❌ Ошибка инициализации Supabase:', error);
-            alert('Ошибка подключения к базе данных. Проверьте настройки.');
         }
         
         // Переменные приложения
@@ -160,11 +173,35 @@
             }, 3000);
         }
         
+        // Генерация случайного имени игрока
+        function generateRandomName() {
+            const adjectives = ['Быстрый', 'Ловкий', 'Смелый', 'Умный', 'Сильный', 'Хитрый', 'Веселый', 'Серьезный'];
+            const nouns = ['Игрок', 'Воин', 'Маг', 'Странник', 'Герой', 'Путник', 'Искатель', 'Рыцарь'];
+            const num = Math.floor(Math.random() * 999);
+            return `${adjectives[Math.floor(Math.random() * adjectives.length)]}_${nouns[Math.floor(Math.random() * nouns.length)]}${num}`;
+        }
+        
+        // ====================
+        // АВТОМАТИЧЕСКАЯ РЕГИСТРАЦИЯ
+        // ====================
+        async function autoLogin() {
+            console.log('🔧 Авто-регистрация запущена');
+            
+            // Генерируем случайное имя
+            const randomName = generateRandomName();
+            document.getElementById('player-name').value = randomName;
+            
+            // Показываем уведомление
+            showNotification(`🤖 Авто-регистрация: ${randomName}`);
+            
+            // Выполняем обычный логин
+            await login();
+        }
+        
         // ====================
         // 1. АВТОРИЗАЦИЯ
         // ====================
         async function login() {
-            console.log('👤 Функция login вызвана');
             const playerName = document.getElementById('player-name').value.trim();
             
             if (!playerName) {
@@ -178,22 +215,7 @@
                     name: playerName
                 };
                 
-                // Проверяем подключение к Supabase
-                if (!supabase) {
-                    showNotification('Supabase не инициализирован!', true);
-                    return;
-                }
-                
-                const { data, error } = await supabase
-                    .from('games')
-                    .select('count')
-                    .limit(1);
-                
-                if (error) {
-                    console.warn('⚠️ Ошибка подключения, используем демо:', error);
-                    showNotification('Используется демо-режим');
-                }
-                
+                console.log('👤 Игрок зарегистрирован:', currentPlayer);
                 showNotification(`🎉 Добро пожаловать, ${playerName}!`);
                 
                 // Показываем игры
@@ -280,15 +302,29 @@
                     <h3>🏙️ Город приключений (ДЕМО)</h3>
                     <p>Исследуйте огромный город с друзьями</p>
                     <p>👥 Игроков: 3 | 👁️ Посещений: 1250</p>
-                    <button class="btn" id="demo-game-btn">
+                    <button class="btn demo-game-btn">
+                        Выбрать игру
+                    </button>
+                </div>
+                <div class="game-card">
+                    <h3>🚀 Космическая станция (ДЕМО)</h3>
+                    <p>Гонки на космических кораблях</p>
+                    <p>👥 Игроков: 5 | 👁️ Посещений: 890</p>
+                    <button class="btn demo-game-btn">
                         Выбрать игру
                     </button>
                 </div>
             `;
             
             setTimeout(() => {
-                document.getElementById('demo-game-btn').addEventListener('click', function() {
-                    selectGame('demo1', 'Город приключений');
+                document.querySelectorAll('.demo-game-btn').forEach((btn, index) => {
+                    btn.addEventListener('click', function() {
+                        const games = [
+                            {id: 'demo1', title: 'Город приключений'},
+                            {id: 'demo2', title: 'Космическая станция'}
+                        ];
+                        selectGame(games[index].id, games[index].title);
+                    });
                 });
             }, 100);
             
@@ -384,63 +420,27 @@
                 z: Math.floor(Math.random() * 100)
             };
             
-            try {
-                if (supabase && currentGame.id !== 'demo1') {
-                    // Реальный режим с Supabase
-                    const { error: playerError } = await supabase
-                        .from('players')
-                        .insert([
-                            {
-                                game_id: currentGame.id,
-                                player_name: currentPlayer.name,
-                                position_x: playerPosition.x,
-                                position_y: playerPosition.y,
-                                position_z: playerPosition.z,
-                                last_update: new Date().toISOString()
-                            }
-                        ]);
-                    
-                    if (playerError) throw playerError;
-                    
-                    // Записываем посещение
-                    await supabase
-                        .from('game_visits')
-                        .insert([
-                            {
-                                game_id: currentGame.id,
-                                player_name: currentPlayer.name,
-                                duration_seconds: 0
-                            }
-                        ]);
-                    
-                    console.log('✅ Игрок добавлен в базу');
+            // Обновляем интерфейс
+            document.getElementById('join-btn').style.display = 'none';
+            document.getElementById('leave-btn').style.display = 'block';
+            
+            showNotification(`🎉 Вы присоединились к игре "${currentGame.title}"!`);
+            
+            // Обновляем позицию
+            updatePositionDisplay();
+            
+            // Загружаем список игроков
+            await loadPlayers();
+            
+            // Запускаем автообновление
+            startAutoUpdate();
+            
+            // Тестовое движение через 2 секунды
+            setTimeout(() => {
+                if (currentPlayer && currentGame) {
+                    testRandomMovement();
                 }
-                
-                // Обновляем интерфейс
-                document.getElementById('join-btn').style.display = 'none';
-                document.getElementById('leave-btn').style.display = 'block';
-                
-                showNotification(`🎉 Вы присоединились к игре "${currentGame.title}"!`);
-                
-                // Обновляем позицию
-                updatePositionDisplay();
-                
-                // Загружаем список игроков
-                await loadPlayers();
-                
-                // Запускаем автообновление
-                startAutoUpdate();
-                
-            } catch (error) {
-                console.error('❌ Ошибка присоединения:', error);
-                
-                // Демо-режим
-                document.getElementById('join-btn').style.display = 'none';
-                document.getElementById('leave-btn').style.display = 'block';
-                updatePositionDisplay();
-                startAutoUpdate();
-                showNotification('🎮 Присоединились (демо-режим)');
-            }
+            }, 2000);
         }
         
         // ====================
@@ -462,24 +462,31 @@
             // Обновляем отображение
             updatePositionDisplay();
             
-            // Обновляем в базе
-            try {
-                if (supabase && currentGame.id !== 'demo1') {
-                    await supabase
-                        .from('players')
-                        .update({
-                            position_x: playerPosition.x,
-                            position_y: playerPosition.y,
-                            position_z: playerPosition.z,
-                            last_update: new Date().toISOString()
-                        })
-                        .eq('game_id', currentGame.id)
-                        .eq('player_name', currentPlayer.name);
-                }
-                
-            } catch (error) {
-                console.error('❌ Ошибка движения:', error);
+            // Тестовое сообщение
+            console.log(`🎯 Движение ${direction}: x=${playerPosition.x}, z=${playerPosition.z}`);
+        }
+        
+        // Тестовое случайное движение
+        function testRandomMovement() {
+            if (!currentPlayer || !currentGame) return;
+            
+            const directions = ['up', 'down', 'left', 'right'];
+            const direction = directions[Math.floor(Math.random() * directions.length)];
+            
+            movePlayer(direction);
+            showNotification(`🤖 Тест: движение ${direction}`);
+        }
+        
+        // Добавить демо-игрока
+        function addDemoPlayer() {
+            if (!currentPlayer || !currentGame) {
+                showNotification('Сначала присоединитесь к игре!', true);
+                return;
             }
+            
+            // Просто обновляем список игроков с демо-данными
+            loadPlayers();
+            showNotification('➕ Добавлен демо-игрок');
         }
         
         function updatePositionDisplay() {
@@ -488,42 +495,24 @@
         }
         
         // ====================
-        // 7. ЗАГРУЗКА ИГРОКОВ
+        // 7. ЗАГРУЗКА ИГРОКОВ (ДЕМО-РЕЖИМ)
         // ====================
         async function loadPlayers() {
             if (!currentGame) return;
             
             try {
-                let players = [];
+                // ВСЕГДА используем демо-режим для теста
+                const players = [
+                    { player_name: currentPlayer.name, position_x: playerPosition.x, position_z: playerPosition.z },
+                    { player_name: 'Демо_Игрок1', position_x: 100, position_z: 100 },
+                    { player_name: 'Демо_Игрок2', position_x: 200, position_z: 200 },
+                    { player_name: 'Демо_Игрок3', position_x: 150, position_z: 150 }
+                ];
                 
-                if (supabase && currentGame.id !== 'demo1') {
-                    // Реальный режим
-                    const { data, error } = await supabase
-                        .from('players')
-                        .select('*')
-                        .eq('game_id', currentGame.id);
-                    
-                    if (error) throw error;
-                    players = data || [];
-                } else {
-                    // Демо-режим
-                    players = [
-                        { player_name: 'Игрок1', position_x: 100, position_z: 100 },
-                        { player_name: 'Гость', position_x: 200, position_z: 200 },
-                        { player_name: currentPlayer.name, position_x: playerPosition.x, position_z: playerPosition.z }
-                    ];
-                }
-                
-                console.log('👥 Игроки загружены:', players);
+                console.log('👥 Игроки загружены (демо):', players);
                 
                 const playersList = document.getElementById('players-list');
                 playersList.innerHTML = '';
-                
-                if (players.length === 0) {
-                    playersList.innerHTML = '<p>😴 Нет игроков онлайн</p>';
-                    document.getElementById('online-count').textContent = '0';
-                    return;
-                }
                 
                 players.forEach(player => {
                     const playerItem = document.createElement('div');
@@ -551,35 +540,21 @@
             
             console.log('👋 Выходим из игры:', currentGame.id);
             
-            try {
-                if (supabase && currentGame.id !== 'demo1') {
-                    await supabase
-                        .from('players')
-                        .delete()
-                        .eq('game_id', currentGame.id)
-                        .eq('player_name', currentPlayer.name);
-                }
-                
-                // Останавливаем автообновление
-                if (updateInterval) {
-                    clearInterval(updateInterval);
-                    updateInterval = null;
-                }
-                
-                // Обновляем интерфейс
-                document.getElementById('join-btn').style.display = 'block';
-                document.getElementById('leave-btn').style.display = 'none';
-                
-                showNotification(`👋 Вы покинули игру "${currentGame.title}"`);
-                
-                // Очищаем список игроков
-                document.getElementById('players-list').innerHTML = '';
-                document.getElementById('online-count').textContent = '0';
-                
-            } catch (error) {
-                console.error('❌ Ошибка выхода:', error);
-                showNotification('Ошибка выхода из игры', true);
+            // Останавливаем автообновление
+            if (updateInterval) {
+                clearInterval(updateInterval);
+                updateInterval = null;
             }
+            
+            // Обновляем интерфейс
+            document.getElementById('join-btn').style.display = 'block';
+            document.getElementById('leave-btn').style.display = 'none';
+            
+            showNotification(`👋 Вы покинули игру "${currentGame.title}"`);
+            
+            // Очищаем список игроков
+            document.getElementById('players-list').innerHTML = '';
+            document.getElementById('online-count').textContent = '0';
         }
         
         // ====================
@@ -608,9 +583,13 @@
             
             // Назначаем обработчики событий
             document.getElementById('login-btn').addEventListener('click', login);
+            document.getElementById('auto-login-btn').addEventListener('click', autoLogin);
             document.getElementById('create-game-btn').addEventListener('click', createGame);
+            document.getElementById('refresh-games-btn')?.addEventListener('click', loadGames);
             document.getElementById('join-btn').addEventListener('click', joinCurrentGame);
             document.getElementById('leave-btn').addEventListener('click', leaveGame);
+            document.getElementById('test-move-btn').addEventListener('click', testRandomMovement);
+            document.getElementById('add-demo-player-btn').addEventListener('click', addDemoPlayer);
             
             // Обработчики для кнопок движения
             document.querySelectorAll('.move-btn').forEach(btn => {
@@ -619,20 +598,11 @@
                 });
             });
             
-            // Проверяем настройки
-            if (SUPABASE_URL.includes('ваш-project') || SUPABASE_ANON_KEY.includes('ваш-anon-key')) {
-                showNotification('⚠️ Замените настройки Supabase в коде!', true);
-                console.log('⚠️ ВНИМАНИЕ: Замените настройки Supabase!');
-            } else {
-                console.log('✅ Настройки Supabase проверены');
-            }
+            // Авто-логин через 1 секунду (раскомментируй если хочешь)
+            // setTimeout(autoLogin, 1000);
             
-            // Авто-логин для теста (можно удалить)
-            setTimeout(() => {
-                if (document.getElementById('auth-panel').style.display !== 'none') {
-                    console.log('🔧 Авто-тест: можно нажать "Начать игру"');
-                }
-            }, 1000);
+            console.log('✅ Все обработчики назначены');
+            console.log('🔧 Для авто-регистрации нажми кнопку "Авто-регистрация"');
         });
     </script>
 </body>
