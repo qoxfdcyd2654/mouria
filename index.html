@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mouria - Игровая платформа</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
+        
+        .panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .games-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .game-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        
+        .game-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.1);
+            border-color: #667eea;
+        }
+        
+        .game-card.active {
+            border-color: #4CAF50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+        
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: background 0.3s;
+        }
+        
+        .btn:hover { background: #5a67d8; }
+        .btn-success { background: #4CAF50; }
+        .btn-success:hover { background: #45a049; }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 16px;
+        }
+        
+        input::placeholder { color: rgba(255, 255, 255, 0.7); }
+        
+        .player-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        
+        .player-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            margin: 5px 0;
+            border-radius: 8px;
+        }
+        
+        .player-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+        
+        .world-container {
+            width: 100%;
+            height: 400px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+        
+        .player-dot {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.5s;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Mouria Game Platform</h1>
+            <p>Игровая платформа на Supabase с реальным временем</p>
+        </div>
+        
+        <!-- Панель авторизации -->
+        <div class="panel" id="auth-panel">
+            <h2>👤 Вход в систему</h2>
+            <input type="text" id="player-name" placeholder="Введите ваше имя игрока" value="Игрок1">
+            <button class="btn" onclick="login()">Начать игру</button>
+            <p style="margin-top: 15px; color: rgba(255, 255, 255, 0.7);">
+                Для теста используйте имя "Игрок1" или введите свое
+            </p>
+        </div>
+        
+        <!-- Панель выбора игры -->
+        <div class="panel" id="games-panel" style="display: none;">
+            <h2>🎮 Выберите игру</h2>
+            <div class="games-grid" id="games-list">
+                <!-- Игры загружаются здесь -->
+            </div>
+            <button class="btn" onclick="showCreateGameForm()" style="margin-top: 20px;">
+                ➕ Создать новую игру
+            </button>
+        </div>
+        
+        <!-- Форма создания игры -->
+        <div class="panel" id="create-game-panel" style="display: none;">
+            <h2>🎮 Создание новой игры</h2>
+            <input type="text" id="game-title" placeholder="Название игры">
+            <textarea id="game-description" placeholder="Описание игры" rows="3"></textarea>
+            <button class="btn btn-success" onclick="createGame()">Создать игру</button>
+            <button class="btn" onclick="hideCreateGameForm()">Отмена</button>
+        </div>
+        
+        <!-- Игровой мир -->
+        <div class="panel" id="game-world-panel" style="display: none;">
+            <h2>🌍 Игровой мир: <span id="current-game-title">Не выбрана</span></h2>
+            
+            <div style="display: flex; gap: 10px; margin: 20px 0;">
+                <button class="btn btn-success" onclick="joinCurrentGame()" id="join-btn">
+                    🎮 Присоединиться к игре
+                </button>
+                <button class="btn" onclick="leaveGame()" id="leave-btn" style="display: none;">
+                    👋 Покинуть игру
+                </button>
+                <button class="btn" onclick="updatePlayerPosition()">
+                    🔄 Обновить позицию
+                </button>
+            </div>
+            
+            <!-- Мир игроков -->
+            <div class="world-container" id="game-world">
+                <!-- Игроки отображаются здесь -->
+            </div>
+            
+            <!-- Список игроков -->
+            <div class="player-list" id="players-list">
+                <!-- Игроки загружаются здесь -->
+            </div>
+            
+            <!-- Статистика -->
+            <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 0.9rem; opacity: 0.8;">Игроков онлайн</div>
+                    <div style="font-size: 2rem; font-weight: bold;" id="online-count">0</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 0.9rem; opacity: 0.8;">Всего посещений</div>
+                    <div style="font-size: 2rem; font-weight: bold;" id="total-visits">0</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px;">
+                    <div style="font-size: 0.9rem; opacity: 0.8;">Ваша позиция</div>
+                    <div style="font-size: 1.2rem; font-weight: bold;" id="player-position">x:0, z:0</div>
+                </div>
+            </div>
+            
+            <!-- Управление -->
+            <div class="controls">
+                <h4>Управление:</h4>
+                <p>WASD - Движение</p>
+                <p>Мышь - Поворот камеры</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ====================
+        // НАСТРОЙКИ SUPABASE
+        // ====================
+        // ЗАМЕНИ ЭТИ ЗНАЧЕНИЯ НА СВОИ!
+        const SUPABASE_URL = 'https://pyigubpkwpgzshfmwpce.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5aWd1YnBrd3BnenNoZm13cGNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMzc2NzAsImV4cCI6MjA4NTcxMzY3MH0.K-P03AbVPLY0C-yGcNULRmipAagB41alDzSMsoyf5pY';
+        
+        // Инициализация Supabase
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // Переменные приложения
+        let currentPlayer = null;
+        let currentGame = null;
+        let playerPosition = { x: 0, y: 0, z: 0 };
+        let playerRotation = { x: 0, y: 0, z: 0 };
+        let playersInGame = [];
+        let positionUpdateInterval = null;
+        let playersSubscription = null;
+        
+        // ====================
+        // АВТОРИЗАЦИЯ
+        // ====================
+        function login() {
+            const playerName = document.getElementById('player-name').value.trim();
+            if (!playerName) {
+                alert('Введите имя игрока!');
+                return;
+            }
+            
+            currentPlayer = {
+                id: 'player_' + Date.now(),
+                name: playerName,
+                color: getRandomColor()
+            };
+            
+            // Показываем игры
+            document.getElementById('auth-panel').style.display = 'none';
+            document.getElementById('games-panel').style.display = 'block';
+            
+            // Загружаем игры
+            loadGames();
+            
+            alert(`Добро пожаловать, ${playerName}!`);
+        }
+        
+        // ====================
+        // РАБОТА С ИГРАМИ
+        // ====================
+        async function loadGames() {
+            try {
+                const { data: games, error } = await supabase
+                    .from('games')
+                    .select('*')
+                    .eq('is_public', true)
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                
+                const gamesList = document.getElementById('games-list');
+                gamesList.innerHTML = '';
+                
+                if (!games || games.length === 0) {
+                    gamesList.innerHTML = '<p style="grid-column: 1/-1; text-align: center; padding: 40px;">Игр пока нет. Создайте первую!</p>';
+                    return;
+                }
+                
+                games.forEach(game => {
+                    const gameCard = document.createElement('div');
+                    gameCard.className = 'game-card';
+                    gameCard.innerHTML = `
+                        <h3>${game.title}</h3>
+                        <p style="margin: 10px 0; opacity: 0.8;">${game.description || 'Без описания'}</p>
+                        <div style="display: flex; justify-content: space-between; margin-top: 15px;">
+                            <span>👤 ${game.creator_id.substring(0, 8)}...</span>
+                            <span>🎮 ${game.players_online} онлайн</span>
+                            <span>👁️ ${game.total_visits}</span>
+                        </div>
+                        <button class="btn" onclick="selectGame('${game.id}', '${game.title.replace(/'/g, "\\'")}')" 
+                                style="width: 100%; margin-top: 15px;">
+                            Выбрать игру
+                        </button>
+                    `;
+                    gamesList.appendChild(gameCard);
+                });
+                
+            } catch (error) {
+                console.error('Ошибка загрузки игр:', error);
+                // Демо-режим
+                showDemoGames();
+            }
+        }
+        
+        function showDemoGames() {
+            const gamesList = document.getElementById('games-list');
+            gamesList.innerHTML = `
+                <div class="game-card">
+                    <h3>🏙️ Город приключений</h3>
+                    <p style="margin: 10px 0; opacity: 0.8;">Исследуйте огромный город с друзьями</p>
+                    <div style="display: flex; justify-content: space-between; margin-top: 15px;">
+                        <span>👤 Админ</span>
+                        <span>🎮 3 онлайн</span>
+                        <span>👁️ 1250</span>
+                    </div>
+                    <button class="btn" onclick="selectGame('demo1', 'Город приключений')" 
+                            style="width: 100%; margin-top: 15px;">
+                        Выбрать игру
+                    </button>
+                </div>
+                <div class="game-card">
+                    <h3>🚀 Космические гонки</h3>
+                    <p style="margin: 10px 0; opacity: 0.8;">Соревнуйтесь на космических кораблях</p>
+                    <div style="display: flex; justify-content: space-between; margin-top: 15px;">
+                        <span>👤 Разработчик</span>
+                        <span>🎮 5 онлайн</span>
+                        <span>👁️ 890</span>
+                    </div>
+                    <button class="btn" onclick="selectGame('demo2', 'Космические гонки')" 
+                            style="width: 100%; margin-top: 15px;">
+                        Выбрать игру
+                    </button>
+                </div>
+            `;
+        }
+        
+        function selectGame(gameId, gameTitle) {
+            currentGame = { id: gameId, title: gameTitle };
+            
+            // Обновляем интерфейс
+            document.getElementById('games-panel').style.display = 'none';
+            document.getElementById('game-world-panel').style.display = 'block';
+            document.getElementById('current-game-title').textContent = gameTitle;
+            
+            // Загружаем игроков этой игры
+            loadPlayersInGame();
+            
+            // Подписываемся на обновления позиций
+            subscribeToPlayers();
+        }
+        
+        function showCreateGameForm() {
+            document.getElementById('games-panel').style.display = 'none';
+            document.getElementById('create-game-panel').style.display = 'block';
+        }
+        
+        function hideCreateGameForm() {
+            document.getElementById('create-game-panel').style.display = 'none';
+            document.getElementById('games-panel').style.display = 'block';
+        }
+        
+        async function createGame() {
+            if (!currentPlayer) {
+                alert('Сначала войдите в систему!');
+                return;
+            }
+            
+            const title = document.getElementById('game-title').value.trim();
+            const description = document.getElementById('game-description').value.trim();
+            
+            if (!title) {
+                alert('Введите название игры!');
+                return;
+            }
+            
+            try {
+                const { data, error } = await supabase
+                    .from('games')
+                    .insert([
+                        {
+                            title: title,
+                            description: description,
+                            creator_id: currentPlayer.id,
+                            players_online: 0,
+                            total_visits: 0,
+                            is_public: true
+                        }
+                    ])
+                    .select();
+                
+                if (error) throw error;
+                
+                alert(`Игра "${title}" создана!`);
+                hideCreateGameForm();
+                loadGames();
+                
+            } catch (error) {
+                console.error('Ошибка создания игры:', error);
+                alert('Создайте таблицу games в Supabase!');
+            }
+        }
+        
+        // ====================
+        // ИГРОКИ И ПОЗИЦИИ
+        // ====================
+        async function joinCurrentGame() {
+            if (!currentPlayer || !currentGame) {
+                alert('Сначала выберите игру!');
+                return;
+            }
+            
+            // Начальная позиция
+            playerPosition = {
+                x: Math.floor(Math.random() * 300 + 50),
+                y: 0,
+                z: Math.floor(Math.random() * 300 + 50)
+            };
+            
+            try {
+                // Добавляем игрока в базу
+                const { error } = await supabase
+                    .from('players')
+                    .insert([
+                        {
+                            game_id: currentGame.id,
+                            player_name: currentPlayer.name,
+                            position_x: playerPosition.x,
+                            position_y: playerPosition.y,
+                            position_z: playerPosition.z,
+                            rotation_x: playerRotation.x,
+                            rotation_y: playerRotation.y,
+                            rotation_z: playerRotation.z
+                        }
+                    ]);
+                
+                if (error) throw error;
+                
+                // Записываем посещение
+                await supabase
+                    .from('game_visits')
+                    .insert([
+                        {
+                            game_id: currentGame.id,
+                            player_name: currentPlayer.name,
+                            duration_seconds: 0
+                        }
+                    ]);
+                
+                // Обновляем счетчик игроков
+                await updateGameStats(1, 1);
+                
+                // Обновляем интерфейс
+                document.getElementById('join-btn').style.display = 'none';
+                document.getElementById('leave-btn').style.display = 'block';
+                
+                // Начинаем обновление позиции
+                startPositionUpdates();
+                
+                alert(`Вы присоединились к игре "${currentGame.title}"!`);
+                
+            } catch (error) {
+                console.error('Ошибка присоединения:', error);
+                // Демо-режим
+                playersInGame.push({
+                    id: currentPlayer.id,
+                    name: currentPlayer.name,
+                    position_x: playerPosition.x,
+                    position_z: playerPosition.z,
+                    color: currentPlayer.color
+                });
+                
+                document.getElementById('join-btn').style.display = 'none';
+                document.getElementById('leave-btn').style.display = 'block';
+                startPositionUpdates();
+                updatePlayersDisplay();
+            }
+        }
+        
+        async function loadPlayersInGame() {
+            if (!currentGame) return;
+            
+            try {
+                const { data: players, error } = await supabase
+                    .from('players')
+                    .select('*')
+                    .eq('game_id', currentGame.id);
+                
+                if (error) throw error;
+                
+                playersInGame = players || [];
+                updatePlayersDisplay();
+                
+            } catch (error) {
+                console.error('Ошибка загрузки игроков:', error);
+                // Демо-данные
+                playersInGame = [
+                    { player_name: 'Игрок1', position_x: 100, position_z: 100, color: '#FF6B6B' },
+                    { player_name: 'Гость', position_x: 200, position_z: 200, color: '#4ECDC4' },
+                    { player_name: 'Странник', position_x: 150, position_z: 150, color: '#FFD166' }
+                ];
+                updatePlayersDisplay();
+            }
+        }
+        
+        function updatePlayersDisplay() {
+            const playersList = document.getElementById('players-list');
+            const world = document.getElementById('game-world');
+            
+            // Очищаем
+            playersList.innerHTML = '';
+            world.innerHTML = '';
+            
+            // Добавляем сетку в мир
+            drawGrid(world);
+            
+            // Добавляем игроков
+            playersInGame.forEach((player, index) => {
+                // В список
+                const playerItem = document.createElement('div');
+                playerItem.className = 'player-item';
+                playerItem.innerHTML = `
+                    <div class="player-avatar" style="background: ${player.color || getRandomColor(index)}">
+                        ${player.player_name ? player.player_name.charAt(0).toUpperCase() : '?'}
+                    </div>
+                    <div>
+                        <div style="font-weight: bold;">${player.player_name || 'Игрок'}</div>
+                        <div style="font-size: 0.8rem; opacity: 0.8;">
+                            x:${Math.round(player.position_x || 0)}, z:${Math.round(player.position_z || 0)}
+                        </div>
+                    </div>
+                `;
+                playersList.appendChild(playerItem);
+                
+                // В игровой мир
+                const dot = document.createElement('div');
+                dot.className = 'player-dot';
+                dot.style.backgroundColor = player.color || getRandomColor(index);
+                dot.style.left = `${((player.position_x || 0) / 400) * 100}%`;
+                dot.style.top = `${((player.position_z || 0) / 400) * 100}%`;
+                dot.title = player.player_name;
+                
+                // Если это текущий игрок
+                if (player.player_name === currentPlayer?.name) {
+                    dot.style.width = '25px';
+                    dot.style.height = '25px';
+                    dot.style.border = '3px solid white';
+                    dot.style.boxShadow = '0 0 10px white';
+                }
+                
+                world.appendChild(dot);
+            });
+            
+            // Обновляем счетчики
+            document.getElementById('online-count').textContent = playersInGame.length;
+            updatePlayerPositionDisplay();
+        }
+        
+        function drawGrid(container) {
+            // Рисуем сетку
+            for (let x = 0; x <= 400; x += 40) {
+                const line = document.createElement('div');
+                line.style.position = 'absolute';
+                line.style.left = `${(x / 400) * 100}%`;
+                line.style.top = '0';
+                line.style.width = '1px';
+                line.style.height = '100%';
+                line.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                container.appendChild(line);
+            }
+            
+            for (let z = 0; z <= 400; z += 40) {
+                const line = document.createElement('div');
+                line.style.position = 'absolute';
+                line.style.top = `${(z / 400) * 100}%`;
+                line.style.left = '0';
+                line.style.width = '100%';
+                line.style.height = '1px';
+                line.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                container.appendChild(line);
+            }
+        }
+        
+        function startPositionUpdates() {
+            // Обновляем позицию каждые 2 секунды
+            positionUpdateInterval = setInterval(async () => {
+                if (currentPlayer && currentGame) {
+                    await updatePlayerPosition();
+                }
+            }, 2000);
+            
+            // Обработка клавиш для движения
+            const keys = {};
+            window.addEventListener('keydown', (e) => {
+                keys[e.key.toLowerCase()] = true;
+            });
+            
+            window.addEventListener('keyup', (e) => {
+                keys[e.key.toLowerCase()] = false;
+            });
+            
+            // Движение по клавишам
+            setInterval(() => {
+                if (!currentPlayer || !currentGame) return;
+                
+                let moved = false;
+                
+                if (keys['w'] || keys['ц']) {
+                    playerPosition.z -= 5;
+                    moved = true;
+                }
+                if (keys['s'] || keys['ы']) {
+                    playerPosition.z += 5;
+                    moved = true;
+                }
+                if (keys['a'] || keys['ф']) {
+                    playerPosition.x -= 5;
+                    moved = true;
+                }
+                if (keys['d'] || keys['в']) {
+                    playerPosition.x += 5;
+                    moved = true;
+                }
+                
+                if (moved) {
+                    updatePlayerPosition();
+                }
+            }, 100);
+        }
+        
+        async function updatePlayerPosition() {
+            if (!currentPlayer || !currentGame) return;
+            
+            try {
+                // Обновляем позицию в базе
+                const { error } = await supabase
+                    .from('players')
+                    .update({
+                        position_x: playerPosition.x,
+                        position_y: playerPosition.y,
+                        position_z: playerPosition.z,
+                        rotation_x: playerRotation.x,
+                        rotation_y: playerRotation.y,
+                        rotation_z: playerRotation.z,
+                        last_update: new Date().toISOString()
+                    })
+                    .eq('game_id', currentGame.id)
+                    .eq('player_name', currentPlayer.name);
+                
+                if (error) throw error;
+                
+                // Обновляем отображение
+                updatePlayerPositionDisplay();
+                
+            } catch (error) {
+                console.error('Ошибка обновления позиции:', error);
+                updatePlayerPositionDisplay();
+            }
+        }
+        
+        function updatePlayerPositionDisplay() {
+            document.getElementById('player-position').textContent = 
+                `x:${Math.round(playerPosition.x)}, z:${Math.round(playerPosition.z)}`;
+            
+            // Обновляем отображение всех игроков
+            const playerIndex = playersInGame.findIndex(p => p.player_name === currentPlayer?.name);
+            if (playerIndex !== -1) {
+                playersInGame[playerIndex].position_x = playerPosition.x;
+                playersInGame[playerIndex].position_z = playerPosition.z;
+                updatePlayersDisplay();
+            }
+        }
+        
+        async function leaveGame() {
+            if (!currentPlayer || !currentGame) return;
+            
+            try {
+                // Удаляем игрока из базы
+                const { error } = await supabase
+                    .from('players')
+                    .delete()
+                    .eq('game_id', currentGame.id)
+                    .eq('player_name', currentPlayer.name);
+                
+                if (error) throw error;
+                
+                // Обновляем счетчик игроков
+                await updateGameStats(-1, 0);
+                
+                // Останавливаем обновления
+                if (positionUpdateInterval) {
+                    clearInterval(positionUpdateInterval);
+                }
+                
+                // Отписываемся от обновлений
+                if (playersSubscription) {
+                    playersSubscription.unsubscribe();
+                }
+                
+                // Обновляем интерфейс
+                document.getElementById('join-btn').style.display = 'block';
+                document.getElementById('leave-btn').style.display = 'none';
+                
+                alert(`Вы покинули игру "${currentGame.title}"`);
+                
+            } catch (error) {
+                console.error('Ошибка выхода:', error);
+                // Демо-режим
+                if (positionUpdateInterval) {
+                    clearInterval(positionUpdateInterval);
+                }
+                document.getElementById('join-btn').style.display = 'block';
+                document.getElementById('leave-btn').style.display = 'none';
+            }
+        }
+        
+        async function updateGameStats(playersChange, visitsChange) {
+            if (!currentGame) return;
+            
+            try {
+                // Получаем текущую игру
+                const { data: game, error: fetchError } = await supabase
+                    .from('games')
+                    .select('players_online, total_visits')
+                    .eq('id', currentGame.id)
+                    .single();
+                
+                if (fetchError) throw fetchError;
+                
+                // Обновляем счетчики
+                const { error: updateError } = await supabase
+                    .from('games')
+                    .update({
+                        players_online: (game.players_online || 0) + playersChange,
+                        total_visits: (game.total_visits || 0) + visitsChange
+                    })
+                    .eq('id', currentGame.id);
+                
+                if (updateError) throw updateError;
+                
+                // Обновляем отображение
+                document.getElementById('online-count').textContent = (game.players_online || 0) + playersChange;
+                document.getElementById('total-visits').textContent = (game.total_visits || 0) + visitsChange;
+                
+            } catch (error) {
+                console.error('Ошибка обновления статистики:', error);
+            }
+        }
+        
+        function subscribeToPlayers() {
+            if (!currentGame) return;
+            
+            // Подписываемся на изменения игроков
+            playersSubscription = supabase
+                .channel('players-channel')
+                .on('postgres_changes', 
+                    { 
+                        event: '*', 
+                        schema: 'public', 
+                        table: 'players',
+                        filter: `game_id=eq.${currentGame.id}`
+                    }, 
+                    (payload) => {
+                        // Обновляем список игроков при изменениях
+                        loadPlayersInGame();
+                    }
+                )
+                .subscribe();
+        }
+        
+        // ====================
+        // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+        // ====================
+        function getRandomColor(index) {
+            const colors = [
+                '#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0',
+                '#118AB2', '#073B4C', '#EF476F', '#7209B7',
+                '#3A86FF', '#FB5607', '#8338EC', '#FF006E'
+            ];
+            return colors[index % colors.length] || colors[0];
+        }
+        
+        // Инициализация при загрузке
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('Mouria Platform loaded!');
+            console.log('Замени SUPABASE_URL и SUPABASE_ANON_KEY в коде на свои!');
+        });
+    </script>
+</body>
+</html>
